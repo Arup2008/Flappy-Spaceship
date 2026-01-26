@@ -1,0 +1,219 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8">
+<title>Flappy Space</title>
+<meta name="viewport" content="width=device-width,initial-scale=1.0">
+<style>
+body{margin:0;overflow:hidden;background:#000}
+canvas{display:block}
+
+#overlay,#shop,#adBox{
+ position:fixed;inset:0;
+ background:rgba(0,0,0,.85);
+ color:#fff;display:none;
+ align-items:center;justify-content:center;
+ flex-direction:column;z-index:10
+}
+button{
+ padding:12px 22px;
+ margin:6px;font-size:16px;
+ border:none;border-radius:8px;
+ background:#00ffcc
+}
+.shop-item{
+ width:220px;
+ display:flex;justify-content:space-between;
+ border:1px solid #fff;
+ padding:6px;margin:6px
+}
+</style>
+</head>
+<body>
+
+<canvas id="game"></canvas>
+
+<div id="overlay">
+<h2>Game Over</h2>
+<p id="s1"></p>
+<p id="s2"></p>
+<p id="s3"></p>
+<button onclick="watchAd()">Restart</button>
+<button onclick="openShop()">Shop</button>
+</div>
+
+<div id="shop">
+<h2>Spaceship Shop</h2>
+<div id="shopList"></div>
+<p id="shopCoins"></p>
+<button onclick="closeShop()">Close</button>
+</div>
+
+<div id="adBox">
+<h2>Advertisement</h2>
+<p>Restarting in <span id="adTime">5</span></p>
+</div>
+
+<script>
+/* ===== CANVAS ===== */
+const c=document.getElementById("game"),ctx=c.getContext("2d");
+function resize(){c.width=innerWidth;c.height=innerHeight}
+resize();addEventListener("resize",resize);
+
+/* ===== IMAGES ===== */
+const bg=new Image();bg.src="bg1.png";
+const pipeT=new Image();pipeT.src="Pipe1.png";
+const pipeB=new Image();pipeB.src="Pipe2.png";
+const coinImg=new Image();coinImg.src="coin.png";
+
+/* ===== SOUNDS ===== */
+const coinSound=new Audio("coin.mp3");
+const crashSound=new Audio("crash.mp3");
+
+/* ===== GAME VAR ===== */
+let gravity=0.45,lift=-8,vel=0;
+let ship={x:80,y:300,w:44,h:44,img:null};
+let pipes=[],gap=200,pw=80,speed=2.5;
+let frame=0,score=0,run=true;
+
+/* ===== STORAGE ===== */
+let high=+localStorage.fs_high||0;
+let coins=+localStorage.fs_coins||0;
+
+/* ===== SHIPS ===== */
+let ships=[];
+for(let i=1;i<=9;i++){
+ let im=new Image();im.src=`ship${i}.png`;
+ ships.push({img:im,cost:(i-1)*5});
+}
+ship.img=ships[0].img;
+
+/* ===== INPUT ===== */
+addEventListener("mousedown",()=>run&&(vel=lift));
+addEventListener("touchstart",()=>run&&(vel=lift));
+
+/* ===== PIPE ===== */
+function newPipe(){
+ let t=Math.random()*(c.height-gap-200)+100;
+ pipes.push({x:c.width,top:t,b:t+gap,pass:false});
+}
+
+/* ===== UPDATE ===== */
+function update(){
+ if(!run)return;
+ vel+=gravity;ship.y+=vel;frame++;
+ if(frame%120===0)newPipe();
+
+ for(let i=pipes.length-1;i>=0;i--){
+  let p=pipes[i];p.x-=speed;
+
+  if(!p.pass && p.x+pw<ship.x){
+   score++;p.pass=true;
+   if(score%10===0){
+    coins++;
+    coinSound.currentTime=0;
+    coinSound.play();
+    localStorage.fs_coins=coins;
+   }
+  }
+
+  if(ship.x<p.x+pw && ship.x+ship.w>p.x &&
+    (ship.y<p.top||ship.y+ship.h>p.b)) end();
+
+  if(p.x+pw<0)pipes.splice(i,1);
+ }
+ if(ship.y<0||ship.y+ship.h>c.height) end();
+}
+
+/* ===== DRAW ===== */
+function draw(){
+ ctx.clearRect(0,0,c.width,c.height);
+ ctx.drawImage(bg,0,0,c.width,c.height);
+
+ // ship (face right)
+ ctx.save();
+ ctx.translate(ship.x+ship.w/2,ship.y+ship.h/2);
+ ctx.rotate(Math.PI/2);
+ ctx.drawImage(ship.img,-ship.w/2,-ship.h/2,ship.w,ship.h);
+ ctx.restore();
+
+ // pipes
+ pipes.forEach(p=>{
+  ctx.drawImage(pipeT,p.x,0,pw,p.top);
+  ctx.drawImage(pipeB,p.x,p.b,pw,c.height-p.b);
+ });
+
+ // UI
+ ctx.fillStyle="#fff";
+ ctx.font="20px Arial";
+ ctx.fillText("Score: "+score,20,30);
+ ctx.fillText("High: "+high,20,55);
+
+ // Coin UI
+ ctx.drawImage(coinImg,20,70,26,26);
+ ctx.fillText("x "+coins,52,90);
+}
+
+/* ===== LOOP ===== */
+(function loop(){update();draw();requestAnimationFrame(loop)})();
+
+/* ===== GAME OVER ===== */
+function end(){
+ if(!run)return;
+ run=false;
+ crashSound.currentTime=0;
+ crashSound.play();
+ if(score>high){high=score;localStorage.fs_high=high;}
+ overlay.style.display="flex";
+ s1.innerText="Score: "+score;
+ s2.innerText="High: "+high;
+ s3.innerText="Coins: "+coins;
+}
+
+/* ===== AD ===== */
+function watchAd(){
+ overlay.style.display="none";
+ adBox.style.display="flex";
+ let t=5;adTime.innerText=t;
+ let ad=setInterval(()=>{
+  t--;adTime.innerText=t;
+  if(t===0){
+   clearInterval(ad);
+   adBox.style.display="none";
+   restart();
+  }
+ },1000);
+}
+
+/* ===== RESTART ===== */
+function restart(){
+ pipes=[];score=0;frame=0;vel=0;
+ ship.y=c.height/2;run=true;
+}
+
+/* ===== SHOP ===== */
+function openShop(){shop.style.display="flex";renderShop()}
+function closeShop(){shop.style.display="none"}
+function renderShop(){
+ shopList.innerHTML="";
+ ships.forEach((s,i)=>{
+  shopList.innerHTML+=`
+   <div class="shop-item">
+    <span>Ship ${i+1} (${s.cost})</span>
+    <button ${coins<s.cost?"disabled":""}
+     onclick="buy(${i})">Use</button>
+   </div>`;
+ });
+ shopCoins.innerText="Coins: "+coins;
+}
+function buy(i){
+ if(coins>=ships[i].cost){
+  coins-=ships[i].cost;
+  ship.img=ships[i].img;
+  localStorage.fs_coins=coins;
+  renderShop();
+ }
+}
+</script>
+</body>
+</html>
